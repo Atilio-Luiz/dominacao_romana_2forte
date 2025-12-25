@@ -1,2 +1,2 @@
 G,|V|,|E|,density,maxDegree,minDegree,weight,time(milliseconds),status
-Petersen,10,15,0.3333333333333333,3,3,7.0,1006,OPTIMAL
+Petersen,10,15,0.3333333333333333,3,3,7.0,1013,OPTIMAL

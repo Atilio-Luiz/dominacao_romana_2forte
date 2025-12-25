@@ -87,46 +87,42 @@ function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
     @variable(model, q[u in vertices(graph), k in 0:2], Bin)
     
     # -------------------------------------------------------------------------
-    # constraint: each vertex receives exactly one label 
+    # constraint R1: each vertex receives exactly one label 
     for v in vertices(graph)
         @constraint(model, z[v,0]+z[v,1]+z[v,2]+z[v,3] == 1)
     end
 
-    # constraint: each vertex v with f(v) = 2 must have at most one neighbor u 
+    # constraint R3: each vertex v with f(v) = 2 must have at most one neighbor u 
     # with label 0 such that v is the unique protector of u.
     for v in vertices(graph)        
         @constraint(model, sum(a[u,v] for u in neighbors(graph, v)) <= z[v,2])
     end
 
     for u in vertices(graph)
+        # calculates the number of neighbors of u that are protectors
         protector_sum(u) = sum(z[w,2] + z[w,3] for w in neighbors(graph,u))
 
-        # constraint: each vertex with label 0 must have at least one protector
+        # constraint R2: each vertex with label 0 must have at least one protector
         @constraint(model, protector_sum(u) >= z[u,0])
 
-        # constraint: guarantees that q[(u,1)] = 1 iff u has exactly one protector
-        @constraint(model, protector_sum(u) <= 1 + (1 - q[u,1])*degree(graph, u))
-        @constraint(model, protector_sum(u) >= 1 - (1 - q[u,1])*degree(graph, u))
-
-        # constraint: these constraints guarantee that q[(u,1)] = 1 iff u has exactly 1 protector 
-        @constraint(model, q[u,0]+q[u,1]+q[u,2] == 1)
-        @constraint(model, protector_sum(u) <= 0 + degree(graph, u)*(1 - q[u,0]))
-        @constraint(model, protector_sum(u) <= 1 + degree(graph, u)*(1 - q[u,1]))
-        @constraint(model, protector_sum(u) >= 1 - degree(graph, u)*(1 - q[u,1]))
-        @constraint(model, protector_sum(u) >= 2 * q[u,2])
-        @constraint(model, protector_sum(u) <= 1 + (degree(graph,u) - 1) * q[u,2])
+        # constraints R4.1 to R4.6: guarantees that q[(u,1)] = 1 iff u has exactly one protector
+        @constraint(model, q[u,0]+q[u,1]+q[u,2] == 1)                              # R4.1
+        @constraint(model, protector_sum(u) <= 0 + degree(graph, u)*(1 - q[u,0]))  # R4.2
+        @constraint(model, protector_sum(u) <= 1 + degree(graph, u)*(1 - q[u,1]))  # R4.3
+        @constraint(model, protector_sum(u) >= 1 - degree(graph, u)*(1 - q[u,1]))  # R4.4
+        @constraint(model, protector_sum(u) >= 2 * q[u,2])                         # R4.5
+        @constraint(model, protector_sum(u) <= 1 + (degree(graph,u) - 1) * q[u,2]) # R4.6
     end
 
-    # constraint: guarantees that a[u,v] = 1 iff f(u)=0, f(v)=2 and v is the unique protector of v.
+    # constraints R5 to R8: guarantees that a[u,v] = 1 iff f(u)=0, f(v)=2 and v is the unique protector of u.
     for u in vertices(graph)
         for v in neighbors(graph, u)
-            @constraint(model, a[u,v] <= z[u,0])
-            @constraint(model, a[u,v] <= z[v,2])
-            @constraint(model, a[u,v] <= q[u,1])
-            @constraint(model, a[u,v] >= z[u,0]+z[v,2]+q[u,1]-2)
+            @constraint(model, a[u,v] <= z[u,0])                    # R5
+            @constraint(model, a[u,v] <= z[v,2])                    # R6
+            @constraint(model, a[u,v] <= q[u,1])                    # R7
+            @constraint(model, a[u,v] >= z[u,0]+z[v,2]+q[u,1]-2)    # R8
         end
     end
-
 
     # Setting the objective function
     @objective(model, Min, sum(z[v,1]+2*z[v,2]+3*z[v,3] for v in vertices(graph)))

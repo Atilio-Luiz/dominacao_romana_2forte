@@ -4,12 +4,11 @@ Graph protection under multiple simultaneous attacks: A heuristic approach
 DOI: https://doi.org/10.1016/j.knosys.2024.112791
 ===========================================================================#
 using Graphs
-using GraphPlot, Compose, Cairo
 
 function greedy_solution(graph::SimpleGraph)::Dict{Int,Int}
     weights = Dict{Int,Int}()
-    covered = falses(nv(graph))       # Bool array
-    neighs  = neighbors               # alias para evitar lookup repetido
+    covered = falses(nv(graph))       # boolean vector to mark the covered vertices
+    neighs  = neighbors               # alias
 
     # initialize all weights to 0
     for v in vertices(graph)
@@ -35,7 +34,7 @@ function greedy_solution(graph::SimpleGraph)::Dict{Int,Int}
         # pick vertex that maximizes g[v]
         v = argmax(g)
 
-        # compute uncov_v without alocar sets
+        # compute uncov_v without alocate sets
         v_not_counted = covered[v] ? 1 : 0
         weights[v] = min(3, g[v] + v_not_counted)
 

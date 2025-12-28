@@ -1,7 +1,7 @@
 #==========================================================================
 Implementation of a integer linear program for 2-Strong Roman Domination
 Author: Atílio Gomes Luiz
-Data: December, 12th 2025
+Data: December, 27th 2025
 ===========================================================================#
 # Importing the necessary packages
 using DelimitedFiles
@@ -12,7 +12,7 @@ using MathOptInterface
 const MOI = MathOptInterface
 
 # Defining a constant that controls debug messages
-const DEBUG = false # false to deactivate
+const DEBUG = true # false to deactivate
 
 # The @debug macro for wrapping any code block
 macro debug(block)
@@ -21,6 +21,8 @@ macro debug(block)
             end)
 end
 
+
+#= Função errada
 # Function to read a graph from a file
 function read_simple_graph(filepath::String)::SimpleGraph
     """
@@ -63,15 +65,59 @@ function read_simple_graph(filepath::String)::SimpleGraph
 
     return g
 end
+=#
 
+
+# Function to read a graph from a file
+function read_simple_graph(filepath::String)::SimpleGraph
+    """
+    Reads an edge list from a file, representing an undirected simple graph.
+    Normalizes the vertices to be consecutive 0-based indices
+    (internally converted to 1-based for `SimpleGraph`).
+    Discards self-loops and multiple edges.
+    """
+    # read the edges from the file
+    edges = open(filepath, "r") do file
+        [parse.(Int, split(line)) for line in eachline(file)]
+    end
+
+    # Create a sorted list of all the present vertices (descarta duplicatas)
+    all_vertices = sort(collect(unique(vcat(collect.(edges)...))))
+
+    # Creates a normalization map: original -> consecutive index (1-based)
+    vertex_map = Dict(v => i for (i, v) in enumerate(all_vertices))
+
+    # Number of normalized vertices
+    n = length(all_vertices)
+
+    # Creates a simple empty graph (1-based)
+    g = SimpleGraph(n)
+
+    # Remove loops and multiple edges from the edges list 
+    unique_edges = Set{Tuple{Int,Int}}()
+    for (u, v) in edges
+        if u != v
+            push!(unique_edges, u < v ? (u, v) : (v, u))
+        end
+    end
+
+    # Add the normalized edges 
+    for (u, v) in unique_edges
+        u_norm = vertex_map[u] 
+        v_norm = vertex_map[v]
+        add_edge!(g, u_norm, v_norm)
+    end
+
+    return g
+end
 
 # Function that computes a graceful coloring of the input graph
-function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
-    """
+#=
     This function takes as input the simple graph, the maximum time (in minutes)
     allowed for the solver to run on this graph, and a viable solution. If the solver does not 
     find the optimal solution within this time, the best solution found will be returned.
-    """
+=#
+function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
     # Preparing the optimization model
     model = Model(CPLEX.Optimizer)
 
@@ -94,24 +140,38 @@ function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
 
     # constraint R3: each vertex v with f(v) = 2 must have at most one neighbor u 
     # with label 0 such that v is the unique protector of u.
-    for v in vertices(graph)        
-        @constraint(model, sum(a[u,v] for u in neighbors(graph, v)) <= z[v,2])
-    end
+    #for v in vertices(graph)  
+    #    if degree(graph, v) > 0
+    #        @constraint(model, sum(a[u,v] for u in neighbors(graph, v)) <= z[v,2])
+    #    end
+    #end
 
     for u in vertices(graph)
+        deg_u = degree(graph, u)
+        
+        if deg_u == 0
+            # Isolated vertex must have label >= 1
+            @constraint(model, z[u,0] == 0)
+            continue
+        end
+
         # calculates the number of neighbors of u that are protectors
         protector_sum(u) = sum(z[w,2] + z[w,3] for w in neighbors(graph,u))
 
         # constraint R2: each vertex with label 0 must have at least one protector
         @constraint(model, protector_sum(u) >= z[u,0])
 
+        # constraint R3: each vertex u with f(u) = 2 must have at most one neighbor w 
+        # with label 0 such that u is the unique protector of w.
+        @constraint(model, sum(a[w,u] for w in neighbors(graph, u)) <= z[u,2])
+
         # constraints R4.1 to R4.6: guarantees that q[(u,1)] = 1 iff u has exactly one protector
-        @constraint(model, q[u,0]+q[u,1]+q[u,2] == 1)                              # R4.1
-        @constraint(model, protector_sum(u) <= 0 + degree(graph, u)*(1 - q[u,0]))  # R4.2
-        @constraint(model, protector_sum(u) <= 1 + degree(graph, u)*(1 - q[u,1]))  # R4.3
-        @constraint(model, protector_sum(u) >= 1 - degree(graph, u)*(1 - q[u,1]))  # R4.4
-        @constraint(model, protector_sum(u) >= 2 * q[u,2])                         # R4.5
-        @constraint(model, protector_sum(u) <= 1 + (degree(graph,u) - 1) * q[u,2]) # R4.6
+        @constraint(model, q[u,0]+q[u,1]+q[u,2] == 1)                               # R4.1
+        @constraint(model, protector_sum(u) <= 0 + deg_u*(1 - q[u,0]))              # R4.2
+        @constraint(model, protector_sum(u) <= 1 + deg_u*(1 - q[u,1]))              # R4.3
+        @constraint(model, protector_sum(u) >= 1 - deg_u*(1 - q[u,1]))              # R4.4
+        @constraint(model, protector_sum(u) >= 2 * q[u,2])                          # R4.5
+        @constraint(model, protector_sum(u) <= 1 + (deg_u - 1) * q[u,2])            # R4.6
     end
 
     # constraints R5 to R8: guarantees that a[u,v] = 1 iff f(u)=0, f(v)=2 and v is the unique protector of u.
@@ -128,7 +188,16 @@ function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
     @objective(model, Min, sum(z[v,1]+2*z[v,2]+3*z[v,3] for v in vertices(graph)))
 
     # Printing the model
-    @debug println(model) 
+    # @debug println(model) 
+
+    @debug begin
+        num_vars = JuMP.num_variables(model)
+        println("Number of variables of the model: ", num_vars)
+
+        # conta apenas as restrições do modelo e exclui restrições de integralidade e de variáveis binárias
+        num_cons = JuMP.num_constraints(model; count_variable_in_set_constraints = false)
+        println("Number of restrictions of the model: ", num_cons)
+    end
 
     start_time = now()
     JuMP.optimize!(model)
@@ -179,11 +248,21 @@ function main()
     # Read the graph and runs the solver 
     g = read_simple_graph(filepath)
 
-    max_degree = maximum(degree(g, v) for v in vertices(g))
-    min_degree = minimum(degree(g, v) for v in vertices(g))
+    #@debug begin
+    #    println("graph: ", g)
+    #end
+
     n = nv(g)  
     m = ne(g)  
     density = 2.0*m / (n*(n-1))
+
+    @debug begin
+        println("n = $n, m = $m, density = $(density)")
+    end
+
+    # quando o grafo é vazio, o valor default será zero
+    max_degree = maximum((degree(g, v) for v in vertices(g)); init=0) 
+    min_degree = minimum((degree(g, v) for v in vertices(g)); init=0)
 
     TIME_LIMIT_MINUTES = 5 
 

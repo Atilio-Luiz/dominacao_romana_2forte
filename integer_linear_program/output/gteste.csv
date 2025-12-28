@@ -1,2 +1,2 @@
 G,|V|,|E|,density,maxDegree,minDegree,weight,time(milliseconds),status
-can___62,62,78,0.041248016922263354,6,0,45.0,3845,OPTIMAL
+gteste,4,4,0.6666666666666666,2,0,4.0,2099,OPTIMAL

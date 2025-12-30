@@ -64,3 +64,9 @@ end
 #g = Graphs.SimpleGraphs.petersen_graph()
 #d = greedy_solution(g)
 #println(d)
+
+#=
+g = Graph(5)
+d = greedy_solution(g)
+println(d)
+=#

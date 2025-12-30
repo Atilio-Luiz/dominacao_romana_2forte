@@ -11,6 +11,8 @@ using Dates
 using MathOptInterface
 const MOI = MathOptInterface
 
+include("../greedy/Greedy_algorithm.jl")
+
 # Defining a constant that controls debug messages
 const DEBUG = true # false to deactivate
 
@@ -117,7 +119,7 @@ end
     allowed for the solver to run on this graph, and a viable solution. If the solver does not 
     find the optimal solution within this time, the best solution found will be returned.
 =#
-function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
+function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int, color::Dict{Int,Int})
     # Preparing the optimization model
     model = Model(CPLEX.Optimizer)
 
@@ -199,6 +201,64 @@ function twoStrongRoman(graph::SimpleGraph, timelimitMinutes::Int)
         println("Number of restrictions of the model: ", num_cons)
     end
 
+    # -----------------------------------------------
+    # ----- WARM START ------------------------------
+    # Configura um valor inicial para as variáveis z[v,k]
+    for v in vertices(graph)
+        c = color[v]
+        for k in [0,1,2,3]
+            if k == c
+                set_start_value(z[v, k], 1)
+            else
+                set_start_value(z[v, k], 0)
+            end
+        end
+    end
+
+    #protector_set = Dict{Int,Set{Int}}()
+    protector_set = Dict(i => Set{Int}() for i in vertices(graph))
+
+    for v in vertices(graph)
+        if color[v] > 0
+            #push!(protector_set[v], v)
+            #push!(get!(protector_set, v, Set{Int}()), v)
+            for w in neighbors(graph, v)
+                #push!(protector_set[w], v)
+                push!(get!(protector_set, w, Set{Int}()), v)
+            end
+        end
+    end
+
+    # Configura um valor inicial para as variáveis a[u,w]
+    for u in vertices(graph)
+        for w in neighbors(graph, u) 
+            if color[u] == 0 && color[w] == 2 && length(protector_set[u]) == 1
+                set_start_value(a[u,w], 1)  
+            else
+                set_start_value(a[u,w], 0)
+            end
+        end
+    end
+
+    # Configura um valor inicial para as variáveis q[u,k]
+    for u in vertices(graph)
+        if length(protector_set[u]) == 0
+            set_start_value(q[u,0], 1)
+            set_start_value(q[u,1], 0)
+            set_start_value(q[u,2], 0)
+        elseif length(protector_set[u]) == 1
+            set_start_value(q[u,0], 0)
+            set_start_value(q[u,1], 1)
+            set_start_value(q[u,2], 0)
+        elseif length(protector_set[u]) >= 2
+            set_start_value(q[u,0], 0)
+            set_start_value(q[u,1], 0)
+            set_start_value(q[u,2], 1)
+        end
+    end
+    
+
+    # Executa o modelo
     start_time = now()
     JuMP.optimize!(model)
     end_time = now()
@@ -266,7 +326,9 @@ function main()
 
     TIME_LIMIT_MINUTES = 5 
 
-    z, opt, elapsed_time, status = twoStrongRoman(g, TIME_LIMIT_MINUTES)
+    color_map = greedy_solution(g)
+
+    z, opt, elapsed_time, status = twoStrongRoman(g, TIME_LIMIT_MINUTES, color_map)
 
     @debug begin
         println("opt = ", opt)
